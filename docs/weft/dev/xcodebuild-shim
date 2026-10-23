@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2019-Present Contributors to FluffyChat
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+case "$*" in
+  "-version") echo "Xcode 26.0"; echo "Build version 17A000";;
+  *Path*) xcrun --sdk macosx --show-sdk-path;;
+  *SDKVersion*) xcrun --sdk macosx --show-sdk-version;;
+  *) exit 1;;
+esac

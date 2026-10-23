@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2019-Present Contributors to FluffyChat
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # Weft threading view for FluffyChat — design
 
 Date: 2026-10-23. Context: Matrix hackathon. Author: Alexander Popiak with Claude.
