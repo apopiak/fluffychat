@@ -10,6 +10,9 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:fluffychat/config/setting_keys.dart';
 import 'package:fluffychat/config/themes.dart';
 import 'package:fluffychat/l10n/l10n.dart';
+import 'package:fluffychat/pages/chat/weft/weft_title_pill.dart';
+import 'package:fluffychat/pages/chat/weft/weft_types.dart';
+import 'package:fluffychat/pages/chat/weft_hooks/weft_braid_frame.dart';
 import 'package:fluffychat/utils/adaptive_bottom_sheet.dart';
 import 'package:fluffychat/utils/date_time_extension.dart';
 import 'package:fluffychat/utils/file_description.dart';
@@ -54,6 +57,8 @@ class Message extends StatelessWidget {
   final void Function()? onExpand;
   final bool isCollapsed;
   final Set<String> bigEmojis;
+  final WeftRowState? weftRow;
+  final void Function(String rootId)? onWeftTitleTap;
 
   const Message(
     this.event, {
@@ -79,6 +84,8 @@ class Message extends StatelessWidget {
     this.onExpand,
     required this.enterThread,
     this.isCollapsed = false,
+    this.weftRow,
+    this.onWeftTitleTap,
     super.key,
   });
 
@@ -95,12 +102,19 @@ class Message extends StatelessWidget {
       if (event.type.startsWith('m.call.')) {
         return const SizedBox.shrink();
       }
-      return StateMessage(event, onExpand: onExpand, isCollapsed: isCollapsed);
+      return WeftBraidFrame(
+        weftRow: weftRow,
+        child: StateMessage(
+          event,
+          onExpand: onExpand,
+          isCollapsed: isCollapsed,
+        ),
+      );
     }
 
     if (event.type == EventTypes.Message &&
         event.messageType == EventTypes.KeyVerificationRequest) {
-      return StateMessage(event);
+      return WeftBraidFrame(weftRow: weftRow, child: StateMessage(event));
     }
 
     final client = Matrix.of(context).client;
@@ -218,8 +232,11 @@ class Message extends StatelessWidget {
             ),
           ];
     final eventStateTextColor = theme.colorScheme.onSurface;
+    final weftRootId = weftRow?.rootId;
+    final weftTitle = weftRow?.isRoot == true ? weftRow?.title : null;
+    final onWeftTitleTap = this.onWeftTitleTap;
 
-    return Center(
+    final messageRow = Center(
       child: SwipeToReply(
         key: ValueKey(event.transactionId ?? event.eventId),
         rightToLeft: AppSettings.swipeRightToLeftToReply.value,
@@ -240,6 +257,20 @@ class Message extends StatelessWidget {
             mainAxisSize: .min,
             crossAxisAlignment: ownMessage ? .end : .start,
             children: <Widget>[
+              if (weftTitle != null && weftRootId != null)
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: ownMessage ? 0 : avatarSize + 8,
+                    bottom: 4,
+                  ),
+                  child: WeftTitlePill(
+                    rootId: weftRootId,
+                    title: weftTitle,
+                    onTap: onWeftTitleTap == null
+                        ? null
+                        : () => onWeftTitleTap(weftRootId),
+                  ),
+                ),
               Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -849,7 +880,7 @@ class Message extends StatelessWidget {
                   ),
                 ],
               ),
-              if (enterThread != null)
+              if (enterThread != null && weftRow == null)
                 AnimatedSize(
                   duration: FluffyThemes.animationDuration,
                   curve: FluffyThemes.animationCurve,
@@ -927,6 +958,7 @@ class Message extends StatelessWidget {
         ),
       ),
     );
+    return WeftBraidFrame(weftRow: weftRow, child: messageRow);
   }
 }
 

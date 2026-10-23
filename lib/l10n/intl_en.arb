@@ -2493,6 +2493,21 @@
     },
     "answersWillBeVisibleWhenPollHasEnded": "Answers will be visible when poll has ended",
     "replyInThread": "Reply in thread",
+    "weftModeThreads": "Threads",
+    "@weftModeThreads": {
+        "type": "String",
+        "placeholders": {}
+    },
+    "weftModeWeft": "Weft",
+    "@weftModeWeft": {
+        "type": "String",
+        "placeholders": {}
+    },
+    "weftAllThreads": "All",
+    "@weftAllThreads": {
+        "type": "String",
+        "placeholders": {}
+    },
     "countReplies": "{count, plural, =1{One reply} other{{count} replies}}",
     "@countReplies": {
         "type": "int",

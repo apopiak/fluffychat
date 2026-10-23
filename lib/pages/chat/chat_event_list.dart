@@ -3,6 +3,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:math' as math;
+
 import 'package:collection/collection.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:fluffychat/config/setting_keys.dart';
@@ -13,6 +15,9 @@ import 'package:fluffychat/pages/chat/encryption_info.dart';
 import 'package:fluffychat/pages/chat/events/message.dart';
 import 'package:fluffychat/pages/chat/seen_by_row.dart';
 import 'package:fluffychat/pages/chat/typing_indicators.dart';
+import 'package:fluffychat/pages/chat/weft/weft_braid.dart';
+import 'package:fluffychat/pages/chat/weft/weft_threads.dart';
+import 'package:fluffychat/pages/chat/weft_hooks/weft_braid_frame.dart';
 import 'package:fluffychat/utils/account_config.dart';
 import 'package:fluffychat/utils/matrix_sdk_extensions/filtered_timeline_extension.dart';
 import 'package:fluffychat/utils/platform_infos.dart';
@@ -102,7 +107,19 @@ class ChatEventList extends StatelessWidget {
 
     final events = timeline.events.filterByVisibleInGui(
       threadId: controller.activeThreadId,
+      weft: controller.weftMode,
+      weftThreadFilter: controller.weftThreadFilter,
     );
+    final weftRows = controller.weftMode
+        ? weftRowStates(events, timeline)
+        : null;
+
+    final weftGutterLanes =
+        weftRows?.fold<int>(
+          0,
+          (lanes, row) => math.max(lanes, weftEffectiveLaneCount(row)),
+        ) ??
+        0;
 
     // create a map of eventId --> index to greatly improve performance of
     // ListView's findChildIndexCallback
@@ -114,196 +131,219 @@ class ChatEventList extends StatelessWidget {
     final hasWallpaper =
         controller.room.client.applicationAccountConfig.wallpaperUrl != null;
 
-    return SelectionArea(
-      child: MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(AppSettings.fontSizeFactor.value),
-        ),
-        child: ListView.custom(
-          padding: EdgeInsets.only(
-            top: 8 + MediaQuery.paddingOf(context).top,
-            bottom:
-                8 +
-                (controller.inputBarHeight ??
-                    (72 + (FluffyThemes.isColumnMode(context) ? 16 : 0))),
-            left: horizontalPadding,
-            right: horizontalPadding,
+    return WeftGutter(
+      lanes: weftGutterLanes,
+      child: SelectionArea(
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(AppSettings.fontSizeFactor.value),
           ),
-          reverse: true,
-          controller: controller.scrollController,
-          keyboardDismissBehavior: PlatformInfos.isIOS
-              ? ScrollViewKeyboardDismissBehavior.onDrag
-              : ScrollViewKeyboardDismissBehavior.manual,
-          childrenDelegate: SliverChildBuilderDelegate(
-            (BuildContext context, int i) {
-              // Footer to display typing indicator and read receipts:
-              if (i == 0) {
-                if (timeline.canRequestFuture) {
-                  return Center(
-                    child: TextButton.icon(
-                      onPressed: timeline.isRequestingFuture
-                          ? null
-                          : controller.requestFuture,
-                      icon: timeline.isRequestingFuture
-                          ? CircularProgressIndicator.adaptive(strokeWidth: 2)
-                          : const Icon(Icons.arrow_downward_outlined),
-                      label: Text(L10n.of(context).loadMore),
-                    ),
-                  );
-                }
-                return Column(
-                  mainAxisSize: .min,
-                  children: [
-                    if (events.isNotEmpty) SeenByRow(event: events.first),
-                    TypingIndicators(controller),
-                    EncryptionInfo(room: controller.room),
-                  ],
-                );
-              }
-
-              // Request history button or progress indicator:
-              if (i == events.length + 1) {
-                if (controller.activeThreadId != null ||
-                    !timeline.canRequestHistory) {
-                  return const SizedBox.shrink();
-                }
-                return Builder(
-                  builder: (context) {
-                    final visibleIndex = timeline.events.lastIndexWhere(
-                      (event) =>
-                          !event.isCollapsedState && event.isVisibleInGui,
-                    );
-                    if (visibleIndex > timeline.events.length - 50) {
-                      WidgetsBinding.instance.addPostFrameCallback(
-                        controller.requestHistory,
-                      );
-                    }
+          child: ListView.custom(
+            padding: EdgeInsets.only(
+              top: 8 + MediaQuery.paddingOf(context).top,
+              bottom:
+                  8 +
+                  (controller.inputBarHeight ??
+                      (72 + (FluffyThemes.isColumnMode(context) ? 16 : 0))),
+              left: horizontalPadding,
+              right: horizontalPadding,
+            ),
+            reverse: true,
+            controller: controller.scrollController,
+            keyboardDismissBehavior: PlatformInfos.isIOS
+                ? ScrollViewKeyboardDismissBehavior.onDrag
+                : ScrollViewKeyboardDismissBehavior.manual,
+            childrenDelegate: SliverChildBuilderDelegate(
+              (BuildContext context, int i) {
+                // Footer to display typing indicator and read receipts:
+                if (i == 0) {
+                  if (timeline.canRequestFuture) {
                     return Center(
                       child: TextButton.icon(
-                        onPressed: timeline.isRequestingHistory
+                        onPressed: timeline.isRequestingFuture
                             ? null
-                            : controller.requestHistory,
-                        icon: timeline.isRequestingHistory
+                            : controller.requestFuture,
+                        icon: timeline.isRequestingFuture
                             ? CircularProgressIndicator.adaptive(strokeWidth: 2)
-                            : const Icon(Icons.arrow_upward_outlined),
+                            : const Icon(Icons.arrow_downward_outlined),
                         label: Text(L10n.of(context).loadMore),
                       ),
                     );
-                  },
-                );
-              }
-              i--;
+                  }
+                  return Column(
+                    mainAxisSize: .min,
+                    children: [
+                      if (events.isNotEmpty) SeenByRow(event: events.first),
+                      TypingIndicators(controller),
+                      EncryptionInfo(room: controller.room),
+                    ],
+                  );
+                }
 
-              // The message at this index:
-              final event = events[i];
-              final animateIn =
-                  (event.transactionId ?? event.eventId) ==
-                  controller.animateInEventId;
+                // Request history button or progress indicator:
+                if (i == events.length + 1) {
+                  if (controller.activeThreadId != null ||
+                      !timeline.canRequestHistory) {
+                    return const SizedBox.shrink();
+                  }
+                  return Builder(
+                    builder: (context) {
+                      final visibleIndex = timeline.events.lastIndexWhere(
+                        (event) =>
+                            !event.isCollapsedState && event.isVisibleInGui,
+                      );
+                      if (visibleIndex > timeline.events.length - 50) {
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          controller.requestHistory,
+                        );
+                      }
+                      return Center(
+                        child: TextButton.icon(
+                          onPressed: timeline.isRequestingHistory
+                              ? null
+                              : controller.requestHistory,
+                          icon: timeline.isRequestingHistory
+                              ? CircularProgressIndicator.adaptive(
+                                  strokeWidth: 2,
+                                )
+                              : const Icon(Icons.arrow_upward_outlined),
+                          label: Text(L10n.of(context).loadMore),
+                        ),
+                      );
+                    },
+                  );
+                }
+                i--;
 
-              final nextEvent = i + 1 < events.length ? events[i + 1] : null;
-              final previousEvent = i > 0 ? events[i - 1] : null;
+                // The message at this index:
+                final event = events[i];
+                final weftRow = weftRows?[i];
+                final animateIn =
+                    (event.transactionId ?? event.eventId) ==
+                    controller.animateInEventId;
 
-              // Collapsed state event
-              final canExpand =
-                  event.isCollapsedState &&
-                  nextEvent?.isCollapsedState == true &&
-                  previousEvent?.isCollapsedState != true;
-              final isCollapsed =
-                  event.isCollapsedState &&
-                  previousEvent?.isCollapsedState == true &&
-                  !controller.expandedEventIds.contains(event.eventId);
+                final nextEvent = i + 1 < events.length ? events[i + 1] : null;
+                final previousEvent = i > 0 ? events[i - 1] : null;
 
-              final displayDate =
-                  event.type == EventTypes.RoomCreate ||
-                  nextEvent == null ||
-                  !event.originServerTs.sameDay(nextEvent.originServerTs);
+                // Collapsed state event
+                final canExpand =
+                    event.isCollapsedState &&
+                    nextEvent?.isCollapsedState == true &&
+                    previousEvent?.isCollapsedState != true;
+                final isCollapsed =
+                    event.isCollapsedState &&
+                    previousEvent?.isCollapsedState == true &&
+                    !controller.expandedEventIds.contains(event.eventId);
 
-              return AutoScrollTag(
-                key: ValueKey(event.transactionId ?? event.eventId),
-                index: i,
-                controller: controller.scrollController,
-                child: Column(
-                  mainAxisSize: .min,
-                  children: [
-                    if (!isCollapsed && displayDate)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
-                        child: Center(
+                final displayDate =
+                    event.type == EventTypes.RoomCreate ||
+                    nextEvent == null ||
+                    !event.originServerTs.sameDay(nextEvent.originServerTs);
+
+                return AutoScrollTag(
+                  key: ValueKey(event.transactionId ?? event.eventId),
+                  index: i,
+                  controller: controller.scrollController,
+                  child: Column(
+                    mainAxisSize: .min,
+                    children: [
+                      if (!isCollapsed && displayDate)
+                        WeftBraidFrame(
+                          weftRow: weftRow == null
+                              ? null
+                              : weftPassThroughAbove(weftRow),
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 4.0),
-                            child: Material(
-                              borderRadius: BorderRadius.circular(
-                                AppConfig.borderRadius * 2,
-                              ),
-                              color: theme.colorScheme.inverseSurface.withAlpha(
-                                200,
-                              ),
+                            padding: const EdgeInsets.only(
+                              top: 8.0,
+                              bottom: 16.0,
+                            ),
+                            child: Center(
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8.0,
-                                  vertical: 2.0,
-                                ),
-                                child: Text(
-                                  event.originServerTs.localizedDate(context),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.onInverseSurface,
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Material(
+                                  borderRadius: BorderRadius.circular(
+                                    AppConfig.borderRadius * 2,
+                                  ),
+                                  color: theme.colorScheme.inverseSurface
+                                      .withAlpha(200),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8.0,
+                                      vertical: 2.0,
+                                    ),
+                                    child: Text(
+                                      event.originServerTs.localizedDate(
+                                        context,
+                                      ),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            theme.colorScheme.onInverseSurface,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
                         ),
+                      Message(
+                        event,
+                        bigEmojis: controller.bigEmojis,
+                        animateIn: animateIn,
+                        onSwipe: () => controller.replyAction(replyTo: event),
+                        onInfoTab: controller.showEventInfo,
+                        onMention: () => controller.sendController.text +=
+                            '${event.senderFromMemoryOrFallback.mention} ',
+                        highlightMarker:
+                            controller.scrollToEventIdMarker == event.eventId,
+                        onSelect: controller.onSelectMessage,
+                        scrollToEventId: controller.scrollToEventId,
+                        longPressSelect: controller.selectedEvents.isNotEmpty,
+                        selected: controller.selectedEvents.any(
+                          (e) => e.eventId == event.eventId,
+                        ),
+                        singleSelected:
+                            controller.selectedEvents.singleOrNull?.eventId ==
+                            event.eventId,
+                        onEdit: controller.editSelectedEventAction,
+                        timeline: timeline,
+                        displayReadMarker:
+                            i > 0 &&
+                            controller.readMarkerEventId == event.eventId,
+                        nextEvent: nextEvent,
+                        previousEvent: previousEvent,
+                        wallpaperMode: hasWallpaper,
+                        scrollController: controller.scrollController,
+                        colors: colors,
+                        isCollapsed: isCollapsed,
+                        weftRow: weftRow,
+                        onWeftTitleTap: (rootId) =>
+                            controller.setWeftThreadFilter(
+                              controller.weftThreadFilter == rootId
+                                  ? null
+                                  : rootId,
+                            ),
+                        enterThread: controller.activeThreadId == null
+                            ? controller.enterThread
+                            : null,
+                        onExpand: canExpand
+                            ? () => controller.expandEventsFrom(
+                                event,
+                                !controller.expandedEventIds.contains(
+                                  event.eventId,
+                                ),
+                              )
+                            : null,
                       ),
-                    Message(
-                      event,
-                      bigEmojis: controller.bigEmojis,
-                      animateIn: animateIn,
-                      onSwipe: () => controller.replyAction(replyTo: event),
-                      onInfoTab: controller.showEventInfo,
-                      onMention: () => controller.sendController.text +=
-                          '${event.senderFromMemoryOrFallback.mention} ',
-                      highlightMarker:
-                          controller.scrollToEventIdMarker == event.eventId,
-                      onSelect: controller.onSelectMessage,
-                      scrollToEventId: controller.scrollToEventId,
-                      longPressSelect: controller.selectedEvents.isNotEmpty,
-                      selected: controller.selectedEvents.any(
-                        (e) => e.eventId == event.eventId,
-                      ),
-                      singleSelected:
-                          controller.selectedEvents.singleOrNull?.eventId ==
-                          event.eventId,
-                      onEdit: controller.editSelectedEventAction,
-                      timeline: timeline,
-                      displayReadMarker:
-                          i > 0 &&
-                          controller.readMarkerEventId == event.eventId,
-                      nextEvent: nextEvent,
-                      previousEvent: previousEvent,
-                      wallpaperMode: hasWallpaper,
-                      scrollController: controller.scrollController,
-                      colors: colors,
-                      isCollapsed: isCollapsed,
-                      enterThread: controller.activeThreadId == null
-                          ? controller.enterThread
-                          : null,
-                      onExpand: canExpand
-                          ? () => controller.expandEventsFrom(
-                              event,
-                              !controller.expandedEventIds.contains(
-                                event.eventId,
-                              ),
-                            )
-                          : null,
-                    ),
-                  ],
-                ),
-              );
-            },
-            childCount: events.length + 2,
-            findChildIndexCallback: (key) =>
-                controller.findChildIndexCallback(key, thisEventsKeyMap),
+                    ],
+                  ),
+                );
+              },
+              childCount: events.length + 2,
+              findChildIndexCallback: (key) =>
+                  controller.findChildIndexCallback(key, thisEventsKeyMap),
+            ),
           ),
         ),
       ),

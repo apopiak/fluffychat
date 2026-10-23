@@ -10,6 +10,8 @@ extension VisibleInGuiExtension on List<Event> {
   List<Event> filterByVisibleInGui({
     String? exceptionEventId,
     String? threadId,
+    bool weft = false,
+    String? weftThreadFilter,
   }) => where((event) {
     if (threadId != null &&
         event.relationshipType != RelationshipTypes.reaction) {
@@ -18,7 +20,15 @@ extension VisibleInGuiExtension on List<Event> {
           event.eventId != threadId) {
         return false;
       }
-    } else if (event.relationshipType == RelationshipTypes.thread) {
+    } else if (event.relationshipType == RelationshipTypes.thread && !weft) {
+      return false;
+    }
+    if (weft &&
+        weftThreadFilter != null &&
+        event.relationshipType != RelationshipTypes.reaction &&
+        event.eventId != weftThreadFilter &&
+        (event.relationshipType != RelationshipTypes.thread ||
+            event.relationshipEventId != weftThreadFilter)) {
       return false;
     }
     return event.isVisibleInGui || event.eventId == exceptionEventId;
