@@ -18,6 +18,7 @@ import 'package:fluffychat/pages/chat/event_info_dialog.dart';
 import 'package:fluffychat/pages/chat/start_poll_bottom_sheet.dart';
 import 'package:fluffychat/pages/chat/trust_user_key_dialog.dart';
 import 'package:fluffychat/pages/chat/utils/web_file_to_x_file.dart';
+import 'package:fluffychat/pages/chat/weft/weft_threads.dart';
 import 'package:fluffychat/pages/chat_details/chat_details.dart';
 import 'package:fluffychat/utils/adaptive_bottom_sheet.dart';
 import 'package:fluffychat/utils/error_reporter.dart';
@@ -199,8 +200,16 @@ class ChatController extends State<ChatPageWithRoom>
 
   bool showEmojiPicker = false;
 
-  String? get sendThreadRootId =>
-      activeThreadId ?? (weftMode ? weftThreadFilter : null);
+  String? get sendThreadRootId {
+    final activeThreadId = this.activeThreadId;
+    if (activeThreadId != null) return activeThreadId;
+    if (!weftMode) return null;
+    final weftThreadFilter = this.weftThreadFilter;
+    if (weftThreadFilter != null) return weftThreadFilter;
+    final replyEvent = this.replyEvent;
+    if (replyEvent?.relationshipType != RelationshipTypes.thread) return null;
+    return replyEvent?.relationshipEventId;
+  }
 
   String? get threadLastEventId {
     final threadId = sendThreadRootId;
@@ -232,6 +241,15 @@ class ChatController extends State<ChatPageWithRoom>
 
   void setWeftThreadFilter(String? rootId) =>
       setState(() => weftThreadFilter = rootId);
+
+  void focusWeftThread(Event event) {
+    final timeline = this.timeline;
+    final rootId = timeline == null ? null : weftThreadRootOf(event, timeline);
+    setState(() {
+      weftThreadFilter = rootId ?? event.eventId;
+      selectedEvents.clear();
+    });
+  }
 
   Future<void> recreateChat() async {
     final room = this.room;
@@ -821,6 +839,7 @@ class ChatController extends State<ChatPageWithRoom>
       editEventId: editEvent?.eventId,
       parseCommands: parseCommands,
       threadRootEventId: sendThreadRootId,
+      threadLastEventId: weftMode ? threadLastEventId : null,
     );
     sendController.value = TextEditingValue(
       text: pendingText,
@@ -1327,6 +1346,14 @@ class ChatController extends State<ChatPageWithRoom>
                 weftThreadFilter: weftThreadFilter,
               )
               .indexOf(foundEvent);
+
+    if (eventIndex == -1 && foundEvent != null && weftThreadFilter != null) {
+      setWeftThreadFilter(null);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => scrollToEventId(eventId, highlightEvent: highlightEvent),
+      );
+      return;
+    }
 
     if (eventIndex == -1) {
       if (foundEvent != null || timelineReloaded) return;

@@ -5,8 +5,11 @@
 
 import 'dart:convert';
 
+import 'package:fluffychat/pages/chat/weft/weft_threads.dart';
+import 'package:fluffychat/utils/matrix_sdk_extensions/filtered_timeline_extension.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:matrix/matrix.dart';
 
 const weftPalette = <Color>[
   Color(0xFFE05565),
@@ -88,6 +91,21 @@ class WeftColorScope extends InheritedWidget {
   });
 
   final Map<String, int> indices;
+
+  static Map<String, int> recentIndices(Timeline timeline) {
+    final events = timeline.events.filterByVisibleInGui(weft: true);
+    final recentRoots = events
+        .take(weftAliveWindow)
+        .map((event) => weftThreadRootOf(event, timeline))
+        .nonNulls
+        .toSet();
+    return weftAssignColorIndices(
+      events.reversed
+          .map((event) => weftThreadRootOf(event, timeline))
+          .nonNulls
+          .where(recentRoots.contains),
+    );
+  }
 
   static Map<String, int> of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<WeftColorScope>()?.indices ??

@@ -27,6 +27,7 @@ extension VisibleInGuiExtension on List<Event> {
         weftThreadFilter != null &&
         event.relationshipType != RelationshipTypes.reaction &&
         event.eventId != weftThreadFilter &&
+        event.eventId != exceptionEventId &&
         (event.relationshipType != RelationshipTypes.thread ||
             event.relationshipEventId != weftThreadFilter)) {
       return false;

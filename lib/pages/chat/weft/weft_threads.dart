@@ -9,6 +9,7 @@ import 'weft_types.dart';
 
 const int weftMaxLanes = 4;
 const int weftTitleWordCount = 5;
+const int weftAliveWindow = 30;
 const String weftFallbackTitle = 'Thread';
 
 const Set<String> _discourseStarters = {
@@ -181,7 +182,7 @@ List<WeftRowState> weftRowStatesFromViews(
 List<WeftThreadSummary> weftAliveThreadsFromViews(
   List<WeftEventView> views,
   Map<String, int> sizes, {
-  int window = 30,
+  int window = weftAliveWindow,
 }) {
   final rootViews = {
     for (final view in views)
@@ -235,7 +236,7 @@ List<WeftRowState> weftRowStates(List<Event> events, Timeline timeline) {
 List<WeftThreadSummary> weftAliveThreads(
   List<Event> events,
   Timeline timeline, {
-  int window = 30,
+  int window = weftAliveWindow,
 }) {
   final sizes = <String, int>{};
   return weftAliveThreadsFromViews(

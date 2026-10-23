@@ -32,7 +32,6 @@ class WeftBraidFrame extends StatelessWidget {
       WeftGutter.lanesOf(context),
       weftEffectiveLaneCount(weftRow),
     );
-    if (lanes == 0) return child;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(

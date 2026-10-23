@@ -95,13 +95,7 @@ class ChatView extends StatelessWidget {
                   )
                 : const <WeftThreadSummary>[];
             final weftColorIndices = controller.weftMode && timeline != null
-                ? weftAssignColorIndices(
-                    timeline.events
-                        .filterByVisibleInGui(weft: true)
-                        .reversed
-                        .map((event) => weftThreadRootOf(event, timeline))
-                        .nonNulls,
-                  )
+                ? WeftColorScope.recentIndices(timeline)
                 : const <String, int>{};
             final showWeftChips =
                 weftThreads.isNotEmpty || controller.weftThreadFilter != null;
@@ -173,9 +167,13 @@ class ChatView extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.message_outlined),
                           tooltip: L10n.of(context).replyInThread,
-                          onPressed: () => controller.enterThread(
-                            controller.selectedEvents.single.eventId,
-                          ),
+                          onPressed: () => controller.weftMode
+                              ? controller.focusWeftThread(
+                                  controller.selectedEvents.single,
+                                )
+                              : controller.enterThread(
+                                  controller.selectedEvents.single.eventId,
+                                ),
                         ),
                       IconButton(
                         icon: const Icon(Icons.copy_outlined),
