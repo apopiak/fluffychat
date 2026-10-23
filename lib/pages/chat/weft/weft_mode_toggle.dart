@@ -25,25 +25,22 @@ class WeftModeToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       widthFactor: 1,
-      child: SizedBox(
-        height: height,
-        child: SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(value: false, label: Text(threadsLabel)),
-            ButtonSegment(value: true, label: Text(weftLabel)),
-          ],
-          selected: {weft},
-          showSelectedIcon: false,
-          onSelectionChanged: (selection) => onChanged(selection.first),
-          style: const ButtonStyle(
-            visualDensity: VisualDensity(horizontal: -3, vertical: -3),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            padding: WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 10),
-            ),
-            textStyle: WidgetStatePropertyAll(
-              TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-            ),
+      child: SegmentedButton<bool>(
+        segments: [
+          ButtonSegment(value: false, label: Text(threadsLabel)),
+          ButtonSegment(value: true, label: Text(weftLabel)),
+        ],
+        selected: {weft},
+        showSelectedIcon: false,
+        onSelectionChanged: (selection) => onChanged(selection.first),
+        style: const ButtonStyle(
+          visualDensity: VisualDensity(horizontal: -3, vertical: -3),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: WidgetStatePropertyAll(Size(0, height)),
+          maximumSize: WidgetStatePropertyAll(Size(double.infinity, height)),
+          padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
+          textStyle: WidgetStatePropertyAll(
+            TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ),
       ),
