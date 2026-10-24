@@ -94,14 +94,15 @@ class WeftColorScope extends InheritedWidget {
 
   static Map<String, int> recentIndices(Timeline timeline) {
     final events = timeline.events.filterByVisibleInGui(weft: true);
+    final index = weftThreadIndex(events);
     final recentRoots = events
         .take(weftAliveWindow)
-        .map((event) => weftThreadRootOf(event, timeline))
+        .map((event) => index.rootOf(event.eventId))
         .nonNulls
         .toSet();
     return weftAssignColorIndices(
       events.reversed
-          .map((event) => weftThreadRootOf(event, timeline))
+          .map((event) => index.rootOf(event.eventId))
           .nonNulls
           .where(recentRoots.contains),
     );

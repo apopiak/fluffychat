@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:fluffychat/config/setting_keys.dart';
+import 'package:fluffychat/pages/chat/weft/weft_threads.dart';
 import 'package:matrix/matrix.dart';
 
 extension VisibleInGuiExtension on List<Event> {
@@ -12,28 +13,32 @@ extension VisibleInGuiExtension on List<Event> {
     String? threadId,
     bool weft = false,
     String? weftThreadFilter,
-  }) => where((event) {
-    if (threadId != null &&
-        event.relationshipType != RelationshipTypes.reaction) {
-      if ((event.relationshipType != RelationshipTypes.thread ||
-              event.relationshipEventId != threadId) &&
-          event.eventId != threadId) {
+  }) {
+    final weftIndex = weft && weftThreadFilter != null
+        ? weftThreadIndex(this)
+        : WeftThreadIndex.empty;
+    return where((event) {
+      if (threadId != null &&
+          event.relationshipType != RelationshipTypes.reaction) {
+        if ((event.relationshipType != RelationshipTypes.thread ||
+                event.relationshipEventId != threadId) &&
+            event.eventId != threadId) {
+          return false;
+        }
+      } else if (event.relationshipType == RelationshipTypes.thread && !weft) {
         return false;
       }
-    } else if (event.relationshipType == RelationshipTypes.thread && !weft) {
-      return false;
-    }
-    if (weft &&
-        weftThreadFilter != null &&
-        event.relationshipType != RelationshipTypes.reaction &&
-        event.eventId != weftThreadFilter &&
-        event.eventId != exceptionEventId &&
-        (event.relationshipType != RelationshipTypes.thread ||
-            event.relationshipEventId != weftThreadFilter)) {
-      return false;
-    }
-    return event.isVisibleInGui || event.eventId == exceptionEventId;
-  }).toList();
+      if (weft &&
+          weftThreadFilter != null &&
+          event.relationshipType != RelationshipTypes.reaction &&
+          event.eventId != weftThreadFilter &&
+          event.eventId != exceptionEventId &&
+          weftIndex.roots[event.eventId] != weftThreadFilter) {
+        return false;
+      }
+      return event.isVisibleInGui || event.eventId == exceptionEventId;
+    }).toList();
+  }
 }
 
 extension IsStateExtension on Event {

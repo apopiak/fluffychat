@@ -205,7 +205,11 @@ class ChatController extends State<ChatPageWithRoom>
     if (activeThreadId != null) return activeThreadId;
     if (!weftMode) return null;
     final weftThreadFilter = this.weftThreadFilter;
-    if (weftThreadFilter != null) return weftThreadFilter;
+    if (weftThreadFilter != null) {
+      return weftThreads.isReplyChain(weftThreadFilter)
+          ? null
+          : weftThreadFilter;
+    }
     final replyEvent = this.replyEvent;
     if (replyEvent?.relationshipType != RelationshipTypes.thread) return null;
     return replyEvent?.relationshipEventId;
@@ -242,9 +246,26 @@ class ChatController extends State<ChatPageWithRoom>
   void setWeftThreadFilter(String? rootId) =>
       setState(() => weftThreadFilter = rootId);
 
-  void focusWeftThread(Event event) {
+  WeftThreadIndex get weftThreads {
     final timeline = this.timeline;
-    final rootId = timeline == null ? null : weftThreadRootOf(event, timeline);
+    if (!weftMode || timeline == null) return WeftThreadIndex.empty;
+    return weftThreadIndex(timeline.events.filterByVisibleInGui(weft: true));
+  }
+
+  Event? get weftReplyChainTarget {
+    final rootId = weftThreadFilter;
+    final timeline = this.timeline;
+    if (rootId == null || timeline == null) return null;
+    final visible = timeline.events.filterByVisibleInGui(weft: true);
+    final index = weftThreadIndex(visible);
+    if (!index.isReplyChain(rootId)) return null;
+    return visible.firstWhereOrNull(
+      (event) => index.rootOf(event.eventId) == rootId,
+    );
+  }
+
+  void focusWeftThread(Event event) {
+    final rootId = weftThreads.rootOf(event.eventId);
     setState(() {
       weftThreadFilter = rootId ?? event.eventId;
       selectedEvents.clear();
@@ -835,7 +856,7 @@ class ChatController extends State<ChatPageWithRoom>
     // ignore: unawaited_futures
     room.sendTextEvent(
       sendController.text,
-      inReplyTo: replyEvent,
+      inReplyTo: replyEvent ?? weftReplyChainTarget,
       editEventId: editEvent?.eventId,
       parseCommands: parseCommands,
       threadRootEventId: sendThreadRootId,
@@ -1061,7 +1082,7 @@ class ChatController extends State<ChatPageWithRoom>
     try {
       await room.sendFileEvent(
         file,
-        inReplyTo: replyEvent,
+        inReplyTo: replyEvent ?? weftReplyChainTarget,
         threadRootEventId: sendThreadRootId,
         extraContent: {
           'info': {...file.info, 'duration': duration},

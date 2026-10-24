@@ -106,6 +106,15 @@ Built in: with 12 colours, two visible threads collide often (the seeded test ro
 - Lanes continue through date separators, state events and the read marker.
 - Tapping a title pill toggles the chip filter for that thread.
 
+## Reply chains as threads (added 2026-10-24)
+
+Matrix threads are opt-in: a normal reply carries only `m.in_reply_to` and stays in the main timeline, so most rooms have reply chains but almost no `m.thread` threads. Weft therefore also treats reply chains as threads, on the reading side only.
+
+- **Root resolution** (`WeftThreadIndex` in `weft_threads.dart`): an `m.thread` event belongs to its thread root. Otherwise a reply follows its `m.in_reply_to` (ignoring thread fallbacks) back until it reaches a message that is not a reply. An explicit thread root is terminal, so a plain reply to a message inside an explicit thread joins that thread. A reply whose target is not loaded uses the target's event ID as root, so siblings still group. Reply cycles terminate.
+- **Sizes and stages** count the loaded members, plus one when the root itself is not loaded. A single reply forms a two-message proto-thread; a chain of three becomes materialized.
+- **Sends stay as they are.** Nothing Weft sends turns a reply into a thread, so other clients see exactly what they saw before. Filtered to an explicit thread, sends carry `m.thread` as before. Filtered to a reply chain, a message without an explicit reply target is sent as a plain reply to the chain's newest message, so it joins the chain without becoming a thread.
+- **Not done:** no cap on long chains yet. A reply to something said much earlier pulls the whole span into one lane; watch how this feels in real rooms.
+
 ## Left to the builder
 
 - Exact pixel values, dash pattern, dot radius; keep lines ~2px at ~55% opacity, dots ~8px.

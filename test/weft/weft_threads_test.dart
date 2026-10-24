@@ -79,10 +79,71 @@ void main() {
         'Anyone Up For A Run',
       );
       expect(weftTitleFromBody('Who is up for the'), 'Who Is Up');
+      expect(
+        weftTitleFromBody('Also: who has the HDMI adapter now?'),
+        'Who Has The HDMI Adapter',
+      );
+      expect(
+        weftTitleFromBody('Quick question: is the wifi down?'),
+        'Is The Wifi Down',
+      );
     });
 
     test('keeps starters that are not leading', () {
       expect(weftTitleFromBody('did you say so'), 'Did You Say So');
+    });
+  });
+
+  group('weftThreadIndexFromLinks', () {
+    WeftEventLink link(String id, {String? thread, String? reply}) =>
+        WeftEventLink(eventId: id, threadRootId: thread, replyToId: reply);
+
+    test('a reply to a reply inherits the chain root', () {
+      final index = weftThreadIndexFromLinks([
+        link('C', reply: 'B'),
+        link('B', reply: 'A'),
+        link('A'),
+        link('S'),
+      ]);
+      expect(index.rootOf('C'), 'A');
+      expect(index.rootOf('B'), 'A');
+      expect(index.rootOf('A'), 'A');
+      expect(index.rootOf('S'), isNull);
+      expect(index.sizes['A'], 3);
+      expect(index.isReplyChain('A'), isTrue);
+    });
+
+    test('a plain reply into an explicit thread joins that thread', () {
+      final index = weftThreadIndexFromLinks([
+        link('P', reply: 'M'),
+        link('M', thread: 'R'),
+        link('R', reply: 'Q'),
+        link('Q'),
+      ]);
+      expect(index.rootOf('P'), 'R');
+      expect(index.rootOf('R'), 'R');
+      expect(index.sizes['R'], 3);
+      expect(index.isReplyChain('R'), isFalse);
+      expect(index.rootOf('Q'), isNull);
+    });
+
+    test('replies to an unloaded message share it as root', () {
+      final index = weftThreadIndexFromLinks([
+        link('B', reply: 'gone'),
+        link('A', reply: 'gone'),
+      ]);
+      expect(index.rootOf('A'), 'gone');
+      expect(index.rootOf('B'), 'gone');
+      expect(index.sizes['gone'], 3);
+    });
+
+    test('a reply cycle terminates', () {
+      final index = weftThreadIndexFromLinks([
+        link('A', reply: 'B'),
+        link('B', reply: 'A'),
+      ]);
+      expect(index.rootOf('A'), isNotNull);
+      expect(index.rootOf('A'), index.rootOf('B'));
     });
   });
 
@@ -312,6 +373,7 @@ void main() {
     Event event(
       String id, {
       String? root,
+      String? replyTo,
       String body = 'body',
       String sender = '@other:example.org',
     }) => Event(
@@ -320,6 +382,10 @@ void main() {
         'body': body,
         if (root != null)
           'm.relates_to': {'rel_type': 'm.thread', 'event_id': root},
+        if (replyTo != null)
+          'm.relates_to': {
+            'm.in_reply_to': {'event_id': replyTo},
+          },
       },
       type: EventTypes.Message,
       eventId: id,
@@ -362,14 +428,40 @@ void main() {
       final plain = event('P');
       final t = timelineOf([c, plain, b1, a1]);
 
-      expect(weftThreadRootOf(a1, t), 'A1');
-      expect(weftThreadRootOf(b1, t), 'A1');
-      expect(weftThreadRootOf(c, t), 'A1');
-      expect(weftThreadRootOf(plain, t), isNull);
-      expect(weftThreadSize('A1', t), 3);
-      expect(weftThreadSize('P', t), 1);
-      expect(weftStageFor(weftThreadSize('A1', t)), WeftStage.materialized);
+      final index = weftThreadIndex(t.events);
+      expect(index.rootOf('A1'), 'A1');
+      expect(index.rootOf('B1'), 'A1');
+      expect(index.rootOf('C'), 'A1');
+      expect(index.rootOf('P'), isNull);
+      expect(index.sizes['A1'], 3);
+      expect(index.sizes['P'], 1);
+      expect(weftStageFor(index.sizes['A1']!), WeftStage.materialized);
+      expect(index.isReplyChain('A1'), isFalse);
       expect(weftTitleFor(a1), 'Are We Shipping Friday');
+    });
+
+    test('plain reply chains form threads', () {
+      final oldestFirst = [
+        event('Q', body: 'Who has the HDMI adapter?'),
+        event('X'),
+        event('R1', replyTo: 'Q'),
+        event('R2', replyTo: 'R1'),
+        event('T', root: 'X'),
+      ];
+      final newestFirst = oldestFirst.reversed.toList();
+      final t = timelineOf(newestFirst);
+      final index = weftThreadIndex(newestFirst);
+
+      expect(index.rootOf('R2'), 'Q');
+      expect(index.sizes['Q'], 3);
+      expect(index.isReplyChain('Q'), isTrue);
+      expect(index.isReplyChain('X'), isFalse);
+
+      final rows = weftRowStates(newestFirst, t).reversed.toList();
+      expect(rows.first.title, 'Who Has The HDMI Adapter');
+      expect(rows[3].rootId, 'Q');
+      expect(rows[4].rootId, 'X');
+      expect(rows[4].stage, WeftStage.proto);
     });
 
     test('row states and alive threads from real events', () {

@@ -49,13 +49,15 @@ SYN=$(nix build nixpkgs#matrix-synapse --no-link --print-out-paths | head -1)/bi
 mkdir -p /tmp/weft-synapse && "$SYN" --server-name localhost --config-path /tmp/weft-synapse/homeserver.yaml \
   --generate-config --report-stats=no --data-directory /tmp/weft-synapse
 printf '\nenable_registration: true\nenable_registration_without_verification: true\n' >> /tmp/weft-synapse/homeserver.yaml
-"$SYN" --config-path /tmp/weft-synapse/homeserver.yaml &
+(cd /tmp/weft-synapse && "$SYN" --config-path homeserver.yaml &)
 python3 -I docs/weft/dev/seed_threads.py http://localhost:8008
 ```
 
 Note the leading newline in the `printf`: the generated config ends without one.
 
-The seed script creates alice, bob, carol and dave (password `weft-test-pw`) and a room "Hackathon crew" with a 4-message thread, a 2-message thread, a 4-message thread and standalone messages in between.
+`docs/weft/dev/seed_replies.py` adds a room "Conference hallway" with interleaved conversations told only through plain replies, the way most Matrix rooms look, to check reply chains as threads.
+
+The thread seed script creates alice, bob, carol and dave (password `weft-test-pw`) and a room "Hackathon crew" with a 4-message thread, a 2-message thread, a 4-message thread and standalone messages in between.
 
 ## Run it
 
