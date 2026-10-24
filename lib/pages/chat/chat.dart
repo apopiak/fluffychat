@@ -18,6 +18,7 @@ import 'package:fluffychat/pages/chat/event_info_dialog.dart';
 import 'package:fluffychat/pages/chat/start_poll_bottom_sheet.dart';
 import 'package:fluffychat/pages/chat/trust_user_key_dialog.dart';
 import 'package:fluffychat/pages/chat/utils/web_file_to_x_file.dart';
+import 'package:fluffychat/pages/chat/weft/weft_threads.dart';
 import 'package:fluffychat/pages/chat_details/chat_details.dart';
 import 'package:fluffychat/utils/adaptive_bottom_sheet.dart';
 import 'package:fluffychat/utils/error_reporter.dart';
@@ -124,6 +125,10 @@ class ChatController extends State<ChatPageWithRoom>
 
   String? activeThreadId;
 
+  late bool weftMode = AppSettings.weftThreads.value;
+
+  String? weftThreadFilter;
+
   late final Set<String> bigEmojis;
 
   late final String readMarkerEventId;
@@ -155,7 +160,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: details.files,
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -195,8 +200,23 @@ class ChatController extends State<ChatPageWithRoom>
 
   bool showEmojiPicker = false;
 
+  String? get sendThreadRootId {
+    final activeThreadId = this.activeThreadId;
+    if (activeThreadId != null) return activeThreadId;
+    if (!weftMode) return null;
+    final weftThreadFilter = this.weftThreadFilter;
+    if (weftThreadFilter != null) {
+      return weftThreads.isReplyChain(weftThreadFilter)
+          ? null
+          : weftThreadFilter;
+    }
+    final replyEvent = this.replyEvent;
+    if (replyEvent?.relationshipType != RelationshipTypes.thread) return null;
+    return replyEvent?.relationshipEventId;
+  }
+
   String? get threadLastEventId {
-    final threadId = activeThreadId;
+    final threadId = sendThreadRootId;
     if (threadId == null) return null;
     return timeline?.events
         .filterByVisibleInGui(threadId: threadId)
@@ -213,6 +233,44 @@ class ChatController extends State<ChatPageWithRoom>
     activeThreadId = null;
     selectedEvents.clear();
   });
+
+  void setWeftMode(bool weft) {
+    if (weft && activeThreadId != null) closeThread();
+    setState(() {
+      weftMode = weft;
+      weftThreadFilter = null;
+    });
+    AppSettings.weftThreads.setItem(weft);
+  }
+
+  void setWeftThreadFilter(String? rootId) =>
+      setState(() => weftThreadFilter = rootId);
+
+  WeftThreadIndex get weftThreads {
+    final timeline = this.timeline;
+    if (!weftMode || timeline == null) return WeftThreadIndex.empty;
+    return weftThreadIndex(timeline.events.filterByVisibleInGui(weft: true));
+  }
+
+  Event? get weftReplyChainTarget {
+    final rootId = weftThreadFilter;
+    final timeline = this.timeline;
+    if (rootId == null || timeline == null) return null;
+    final visible = timeline.events.filterByVisibleInGui(weft: true);
+    final index = weftThreadIndex(visible);
+    if (!index.isReplyChain(rootId)) return null;
+    return visible.firstWhereOrNull(
+      (event) => index.rootOf(event.eventId) == rootId,
+    );
+  }
+
+  void focusWeftThread(Event event) {
+    final rootId = weftThreads.rootOf(event.eventId);
+    setState(() {
+      weftThreadFilter = rootId ?? event.eventId;
+      selectedEvents.clear();
+    });
+  }
 
   Future<void> recreateChat() async {
     final room = this.room;
@@ -287,16 +345,24 @@ class ChatController extends State<ChatPageWithRoom>
     if (timeline == null) return;
     Logs().v('Requesting future...');
 
-    final mostRecentEvent = timeline.events.filterByVisibleInGui().firstOrNull;
+    final mostRecentEvent = timeline.events
+        .filterByVisibleInGui(
+          weft: weftMode,
+          weftThreadFilter: weftThreadFilter,
+        )
+        .firstOrNull;
 
     await timeline.requestFuture(historyCount: _loadHistoryCount);
 
     if (mostRecentEvent != null) {
       setReadMarker(eventId: mostRecentEvent.eventId);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final index = timeline.events.filterByVisibleInGui().indexOf(
-          mostRecentEvent,
-        );
+        final index = timeline.events
+            .filterByVisibleInGui(
+              weft: weftMode,
+              weftThreadFilter: weftThreadFilter,
+            )
+            .indexOf(mostRecentEvent);
         if (index >= 0) {
           scrollController.scrollToIndex(
             index,
@@ -365,7 +431,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: files,
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -488,6 +554,8 @@ class ChatController extends State<ChatPageWithRoom>
   void expandEventsFrom(Event event, bool expand) {
     final events = timeline!.events.filterByVisibleInGui(
       threadId: activeThreadId,
+      weft: weftMode,
+      weftThreadFilter: weftThreadFilter,
     );
     final start = events.indexOf(event);
     setState(() {
@@ -522,6 +590,8 @@ class ChatController extends State<ChatPageWithRoom>
                 .filterByVisibleInGui(
                   exceptionEventId: readMarkerEventId,
                   threadId: activeThreadId,
+                  weft: weftMode,
+                  weftThreadFilter: weftThreadFilter,
                 )
                 .indexWhere((e) => e.eventId == readMarkerEventId);
 
@@ -533,6 +603,8 @@ class ChatController extends State<ChatPageWithRoom>
             .filterByVisibleInGui(
               exceptionEventId: readMarkerEventId,
               threadId: activeThreadId,
+              weft: weftMode,
+              weftThreadFilter: weftThreadFilter,
             )
             .indexWhere((e) => e.eventId == readMarkerEventId);
       }
@@ -784,10 +856,11 @@ class ChatController extends State<ChatPageWithRoom>
     // ignore: unawaited_futures
     room.sendTextEvent(
       sendController.text,
-      inReplyTo: replyEvent,
+      inReplyTo: replyEvent ?? weftReplyChainTarget,
       editEventId: editEvent?.eventId,
       parseCommands: parseCommands,
-      threadRootEventId: activeThreadId,
+      threadRootEventId: sendThreadRootId,
+      threadLastEventId: weftMode ? threadLastEventId : null,
     );
     sendController.value = TextEditingValue(
       text: pendingText,
@@ -813,7 +886,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: files,
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -827,7 +900,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: [XFile.fromData(image)],
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -847,7 +920,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: files,
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -865,7 +938,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: [file],
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -908,7 +981,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: xFiles,
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -924,7 +997,7 @@ class ChatController extends State<ChatPageWithRoom>
           files: files.map(XFile.new).toList(),
           room: room,
           outerContext: context,
-          threadRootEventId: activeThreadId,
+          threadRootEventId: sendThreadRootId,
           threadLastEventId: threadLastEventId,
         ),
       );
@@ -970,7 +1043,7 @@ class ChatController extends State<ChatPageWithRoom>
         files: [file],
         room: room,
         outerContext: context,
-        threadRootEventId: activeThreadId,
+        threadRootEventId: sendThreadRootId,
         threadLastEventId: threadLastEventId,
       ),
     );
@@ -1009,8 +1082,8 @@ class ChatController extends State<ChatPageWithRoom>
     try {
       await room.sendFileEvent(
         file,
-        inReplyTo: replyEvent,
-        threadRootEventId: activeThreadId,
+        inReplyTo: replyEvent ?? weftReplyChainTarget,
+        threadRootEventId: sendThreadRootId,
         extraContent: {
           'info': {...file.info, 'duration': duration},
           'org.matrix.msc3245.voice': {},
@@ -1280,7 +1353,7 @@ class ChatController extends State<ChatPageWithRoom>
         foundEvent?.relationshipType == RelationshipTypes.thread
         ? foundEvent?.relationshipEventId
         : null;
-    if (activeThreadId == null && threadRootId != null) {
+    if (activeThreadId == null && !weftMode && threadRootId != null) {
       return scrollToEventId(threadRootId, highlightEvent: highlightEvent);
     }
 
@@ -1290,8 +1363,18 @@ class ChatController extends State<ChatPageWithRoom>
               .filterByVisibleInGui(
                 exceptionEventId: eventId,
                 threadId: activeThreadId,
+                weft: weftMode,
+                weftThreadFilter: weftThreadFilter,
               )
               .indexOf(foundEvent);
+
+    if (eventIndex == -1 && foundEvent != null && weftThreadFilter != null) {
+      setWeftThreadFilter(null);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => scrollToEventId(eventId, highlightEvent: highlightEvent),
+      );
+      return;
+    }
 
     if (eventIndex == -1) {
       if (foundEvent != null || timelineReloaded) return;
@@ -1422,6 +1505,8 @@ class ChatController extends State<ChatPageWithRoom>
 
     final events = timeline.events.filterByVisibleInGui(
       threadId: activeThreadId,
+      weft: weftMode,
+      weftThreadFilter: weftThreadFilter,
     );
 
     final lastOwnMessage = events.firstWhereOrNull(

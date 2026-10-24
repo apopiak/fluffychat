@@ -4,25 +4,41 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:fluffychat/config/setting_keys.dart';
+import 'package:fluffychat/pages/chat/weft/weft_threads.dart';
 import 'package:matrix/matrix.dart';
 
 extension VisibleInGuiExtension on List<Event> {
   List<Event> filterByVisibleInGui({
     String? exceptionEventId,
     String? threadId,
-  }) => where((event) {
-    if (threadId != null &&
-        event.relationshipType != RelationshipTypes.reaction) {
-      if ((event.relationshipType != RelationshipTypes.thread ||
-              event.relationshipEventId != threadId) &&
-          event.eventId != threadId) {
+    bool weft = false,
+    String? weftThreadFilter,
+  }) {
+    final weftIndex = weft && weftThreadFilter != null
+        ? weftThreadIndex(this)
+        : WeftThreadIndex.empty;
+    return where((event) {
+      if (threadId != null &&
+          event.relationshipType != RelationshipTypes.reaction) {
+        if ((event.relationshipType != RelationshipTypes.thread ||
+                event.relationshipEventId != threadId) &&
+            event.eventId != threadId) {
+          return false;
+        }
+      } else if (event.relationshipType == RelationshipTypes.thread && !weft) {
         return false;
       }
-    } else if (event.relationshipType == RelationshipTypes.thread) {
-      return false;
-    }
-    return event.isVisibleInGui || event.eventId == exceptionEventId;
-  }).toList();
+      if (weft &&
+          weftThreadFilter != null &&
+          event.relationshipType != RelationshipTypes.reaction &&
+          event.eventId != weftThreadFilter &&
+          event.eventId != exceptionEventId &&
+          weftIndex.roots[event.eventId] != weftThreadFilter) {
+        return false;
+      }
+      return event.isVisibleInGui || event.eventId == exceptionEventId;
+    }).toList();
+  }
 }
 
 extension IsStateExtension on Event {
